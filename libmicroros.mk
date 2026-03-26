@@ -22,6 +22,8 @@ clean:
 	rm -rf $(EXTENSIONS_DIR)/micro_ros_dev; \
 	rm -rf $(EXTENSIONS_DIR)/micro_ros_src;
 
+RISCV_ABI_FLAGS := $(filter -march=% -mabi=%,$(X_CFLAGS))
+
 $(EXTENSIONS_DIR)/esp32_toolchain.cmake: $(EXTENSIONS_DIR)/esp32_toolchain.cmake.in
 	rm -f $(EXTENSIONS_DIR)/esp32_toolchain.cmake; \
 	cat $(EXTENSIONS_DIR)/esp32_toolchain.cmake.in | \
@@ -29,6 +31,7 @@ $(EXTENSIONS_DIR)/esp32_toolchain.cmake: $(EXTENSIONS_DIR)/esp32_toolchain.cmake
 		sed "s/@CMAKE_CXX_COMPILER@/$(subst /,\/,$(X_CXX))/g" | \
 		sed "s/@CFLAGS@/$(subst /,\/,$(CFLAGS_INTERNAL))/g" | \
 		sed "s/@CXXFLAGS@/$(subst /,\/,$(CXXFLAGS_INTERNAL))/g" | \
+		sed "s|@RISCV_ABI_FLAGS@|$(RISCV_ABI_FLAGS)|g" | \
 		sed "s/@IDF_TARGET@/$(subst /,\/,$(IDF_TARGET))/g" | \
 		sed "s/@IDF_PATH@/$(subst /,\/,$(IDF_PATH))/g" | \
 		sed "s/@BUILD_CONFIG_DIR@/$(subst /,\/,$(BUILD_DIR)/config)/g" \
@@ -83,8 +86,8 @@ $(EXTENSIONS_DIR)/micro_ros_src/src:
 	touch src/rcl/rcl_yaml_param_parser/COLCON_IGNORE; \
 	touch src/ros2_tracing/test_tracetools/COLCON_IGNORE; \
 	touch src/ros2_tracing/lttngpy/COLCON_IGNORE; \
-	cp -rf $(EXTRA_ROS_PACKAGES) src/extra_packages || :; \
-	test -f src/extra_packages/extra_packages.repos && cd src/extra_packages && vcs import --input extra_packages.repos || :;
+	test -d "$(EXTRA_ROS_PACKAGES)/interfaces" && cp -rf "$(EXTRA_ROS_PACKAGES)/interfaces" src/interfaces || :; \
+	test -f "$(EXTRA_ROS_PACKAGES)/extra_packages.repos" && cp -rf "$(EXTRA_ROS_PACKAGES)" src/extra_packages && cd src/extra_packages && vcs import --input extra_packages.repos || :;
 
 
 $(EXTENSIONS_DIR)/micro_ros_src/install: $(EXTENSIONS_DIR)/esp32_toolchain.cmake $(EXTENSIONS_DIR)/micro_ros_dev/install $(EXTENSIONS_DIR)/micro_ros_src/src
@@ -111,7 +114,7 @@ $(EXTENSIONS_DIR)/micro_ros_src/install: $(EXTENSIONS_DIR)/esp32_toolchain.cmake
 
 patch_atomic:$(EXTENSIONS_DIR)/micro_ros_src/install
 # Workaround https://github.com/micro-ROS/micro_ros_espidf_component/issues/18
-ifeq ($(IDF_TARGET),$(filter $(IDF_TARGET),esp32s2 esp32c3))
+ifeq ($(IDF_TARGET),$(filter $(IDF_TARGET),esp32s2 esp32c3 esp32c6 esp32p4))
 		echo $(UROS_DIR)/atomic_workaround; \
 		mkdir $(UROS_DIR)/atomic_workaround; cd $(UROS_DIR)/atomic_workaround; \
 		$(X_AR) x $(UROS_DIR)/install/lib/librcutils.a; \
