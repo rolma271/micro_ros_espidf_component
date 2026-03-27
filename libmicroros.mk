@@ -22,7 +22,13 @@ clean:
 	rm -rf $(EXTENSIONS_DIR)/micro_ros_dev; \
 	rm -rf $(EXTENSIONS_DIR)/micro_ros_src;
 
+# Extract RISCV ABI flags; fall back to reading the response file if X_CFLAGS uses @file syntax
 RISCV_ABI_FLAGS := $(filter -march=% -mabi=%,$(X_CFLAGS))
+ifeq ($(RISCV_ABI_FLAGS),)
+ifneq ($(filter @%,$(X_CFLAGS)),)
+RISCV_ABI_FLAGS := $(filter -march=% -mabi=%,$(shell cat $(patsubst @%,%,$(firstword $(X_CFLAGS))) 2>/dev/null))
+endif
+endif
 
 $(EXTENSIONS_DIR)/esp32_toolchain.cmake: $(EXTENSIONS_DIR)/esp32_toolchain.cmake.in
 	rm -f $(EXTENSIONS_DIR)/esp32_toolchain.cmake; \
@@ -87,7 +93,7 @@ $(EXTENSIONS_DIR)/micro_ros_src/src:
 	touch src/ros2_tracing/test_tracetools/COLCON_IGNORE; \
 	touch src/ros2_tracing/lttngpy/COLCON_IGNORE; \
 	test -d "$(EXTRA_ROS_PACKAGES)/interfaces" && cp -rf "$(EXTRA_ROS_PACKAGES)/interfaces" src/interfaces || :; \
-	test -f "$(EXTRA_ROS_PACKAGES)/extra_packages.repos" && cp -rf "$(EXTRA_ROS_PACKAGES)" src/extra_packages && cd src/extra_packages && vcs import --input extra_packages.repos || :;
+	test -f "$(EXTRA_ROS_PACKAGES)/extra_packages.repos" && rm -rf src/extra_packages && mkdir -p src/extra_packages && cp "$(EXTRA_ROS_PACKAGES)/extra_packages.repos" src/extra_packages/ && cd src/extra_packages && vcs import --input extra_packages.repos || :;
 
 
 $(EXTENSIONS_DIR)/micro_ros_src/install: $(EXTENSIONS_DIR)/esp32_toolchain.cmake $(EXTENSIONS_DIR)/micro_ros_dev/install $(EXTENSIONS_DIR)/micro_ros_src/src
@@ -118,22 +124,27 @@ ifeq ($(IDF_TARGET),$(filter $(IDF_TARGET),esp32s2 esp32c3 esp32c6 esp32p4))
 		echo $(UROS_DIR)/atomic_workaround; \
 		mkdir $(UROS_DIR)/atomic_workaround; cd $(UROS_DIR)/atomic_workaround; \
 		$(X_AR) x $(UROS_DIR)/install/lib/librcutils.a; \
-		$(X_STRIP) atomic_64bits.c.obj --strip-symbol=__atomic_fetch_add_8; \
-		if [ $(IDF_VERSION_MAJOR) -ge 4 ] && [ $(IDF_VERSION_MINOR) -ge 3 ]; then \
-			$(X_STRIP) atomic_64bits.c.obj --strip-symbol=__atomic_load_8; \
-			$(X_STRIP) atomic_64bits.c.obj --strip-symbol=__atomic_store_8; \
-			$(X_STRIP) atomic_64bits.c.obj --strip-symbol=__atomic_exchange_8; \
+		ATOMIC_OBJ=$$(ls atomic_64bits.c.obj atomic_64bits.c.o 2>/dev/null | head -1); \
+		if [ -n "$$ATOMIC_OBJ" ]; then \
+			$(X_STRIP) $$ATOMIC_OBJ --strip-symbol=__atomic_fetch_add_8; \
+			if [ $(IDF_VERSION_MAJOR) -ge 4 ] && [ $(IDF_VERSION_MINOR) -ge 3 ]; then \
+				$(X_STRIP) $$ATOMIC_OBJ --strip-symbol=__atomic_load_8; \
+				$(X_STRIP) $$ATOMIC_OBJ --strip-symbol=__atomic_store_8; \
+				$(X_STRIP) $$ATOMIC_OBJ --strip-symbol=__atomic_exchange_8; \
+			fi; \
+			if [ $(IDF_VERSION_MAJOR) -ge 4 ] && [ $(IDF_VERSION_MINOR) -ge 4 ]; then \
+				$(X_STRIP) $$ATOMIC_OBJ --strip-symbol=__atomic_load_8; \
+				$(X_STRIP) $$ATOMIC_OBJ --strip-symbol=__atomic_store_8; \
+			fi; \
+			if [ $(IDF_VERSION_MAJOR) -ge 5 ] && [ $(IDF_VERSION_MINOR) -ge 0 ]; then \
+				$(X_STRIP) $$ATOMIC_OBJ --strip-symbol=__atomic_load_8; \
+				$(X_STRIP) $$ATOMIC_OBJ --strip-symbol=__atomic_store_8; \
+				$(X_STRIP) $$ATOMIC_OBJ --strip-symbol=__atomic_exchange_8; \
+			fi; \
 		fi; \
-		if [ $(IDF_VERSION_MAJOR) -ge 4 ] && [ $(IDF_VERSION_MINOR) -ge 4 ]; then \
-			$(X_STRIP) atomic_64bits.c.obj --strip-symbol=__atomic_load_8; \
-			$(X_STRIP) atomic_64bits.c.obj --strip-symbol=__atomic_store_8; \
-		fi; \
-		if [ $(IDF_VERSION_MAJOR) -ge 5 ] && [ $(IDF_VERSION_MINOR) -ge 0 ]; then \
-			$(X_STRIP) atomic_64bits.c.obj --strip-symbol=__atomic_load_8; \
-			$(X_STRIP) atomic_64bits.c.obj --strip-symbol=__atomic_store_8; \
-			$(X_STRIP) atomic_64bits.c.obj --strip-symbol=__atomic_exchange_8; \
-		fi; \
-		$(X_AR) rc -s librcutils.a *.obj; \
+		OBJ_EXT=obj; \
+		[ -z "$$(ls *.obj 2>/dev/null)" ] && OBJ_EXT=o || true; \
+		$(X_AR) rc -s librcutils.a *.$$OBJ_EXT; \
 		cp -rf librcutils.a  $(UROS_DIR)/install/lib/librcutils.a; \
 		rm -rf $(UROS_DIR)/atomic_workaround; \
 		cd ..;
@@ -149,6 +160,8 @@ $(EXTENSIONS_DIR)/libmicroros.a: $(EXTENSIONS_DIR)/micro_ros_src/install patch_a
 		done; \
 		cd ..; rm -rf $$folder; \
 	done ; \
-	$(X_AR) rc -s libmicroros.a *.obj; cp libmicroros.a $(EXTENSIONS_DIR); \
+	OBJ_EXT=obj; \
+	[ -z "$$(ls *.obj 2>/dev/null)" ] && OBJ_EXT=o || true; \
+	$(X_AR) rc -s libmicroros.a *.$$OBJ_EXT; cp libmicroros.a $(EXTENSIONS_DIR); \
 	cd ..; rm -rf libmicroros; \
 	cp -R $(UROS_DIR)/install/include $(EXTENSIONS_DIR)/include;
