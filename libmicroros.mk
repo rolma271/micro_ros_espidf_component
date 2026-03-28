@@ -35,8 +35,6 @@ $(EXTENSIONS_DIR)/esp32_toolchain.cmake: $(EXTENSIONS_DIR)/esp32_toolchain.cmake
 	cat $(EXTENSIONS_DIR)/esp32_toolchain.cmake.in | \
 		sed "s/@CMAKE_C_COMPILER@/$(subst /,\/,$(X_CC))/g" | \
 		sed "s/@CMAKE_CXX_COMPILER@/$(subst /,\/,$(X_CXX))/g" | \
-		sed "s/@CFLAGS@/$(subst /,\/,$(CFLAGS_INTERNAL))/g" | \
-		sed "s/@CXXFLAGS@/$(subst /,\/,$(CXXFLAGS_INTERNAL))/g" | \
 		sed "s|@RISCV_ABI_FLAGS@|$(RISCV_ABI_FLAGS)|g" | \
 		sed "s/@IDF_TARGET@/$(subst /,\/,$(IDF_TARGET))/g" | \
 		sed "s/@IDF_PATH@/$(subst /,\/,$(IDF_PATH))/g" | \
